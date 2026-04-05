@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local LLM Chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="background-glow background-glow-left"></div>
+    <div class="background-glow background-glow-right"></div>
+    <div class="app-shell">
+      <aside class="control-rail">
+        <div class="brand-block">
+          <h1>Local LLM Chat</h1>
+          <p class="lede">
+            Stream replies from your local Ollama model with typed prompts or live microphone dictation.
+          </p>
+        </div>
+
+        <section class="rail-section">
+          <div class="section-heading">
+            <h2>Session</h2>
+            <button id="refreshModelsButton" class="ghost-button" type="button">Refresh</button>
+          </div>
+
+          <label class="field">
+            <span>Model</span>
+            <div class="select-wrap">
+              <select id="modelInput" aria-label="Model">
+                <option value="">Loading models…</option>
+              </select>
+            </div>
+          </label>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Temperature</span>
+              <input id="temperatureInput" type="number" min="0" max="2" step="0.01" value="1.0" />
+              <small class="field-hint">0.2-0.7 precise, 0.8-1.0 balanced, 1.1+ more creative.</small>
+            </label>
+
+            <label class="field">
+              <span>Context</span>
+              <input id="contextInput" type="number" min="512" step="512" value="8192" />
+              <small id="contextHint" class="field-hint">Checking model max context…</small>
+            </label>
+          </div>
+
+          <div class="field">
+            <span class="field-label-with-icon">
+              <svg class="field-icon" aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                <path d="M10 2.4a5.3 5.3 0 0 0-3.6 9.2c.5.4.8 1 .8 1.7v.2h5.6v-.2c0-.7.3-1.3.8-1.7A5.3 5.3 0 0 0 10 2.4Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8.1 15.2h3.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                <path d="M8.6 17h2.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+              <span>Thinking mode</span>
+            </span>
+            <label class="toggle-row" for="thinkingModeInput">
+              <input id="thinkingModeInput" type="checkbox" />
+              <span class="toggle-check" aria-hidden="true"></span>
+              <span class="toggle-copy">Enable internal reasoning mode</span>
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field-label-with-icon">
+              <svg class="field-icon" aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                <path d="M1.8 10s2.8-4.2 8.2-4.2S18.2 10 18.2 10s-2.8 4.2-8.2 4.2S1.8 10 1.8 10Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="10" cy="10" r="2.3" fill="currentColor"/>
+              </svg>
+              <span>Visual token budget</span>
+            </span>
+            <select id="visualTokenBudgetInput" aria-label="Visual token budget">
+              <option value="70">70</option>
+              <option value="140">140</option>
+              <option value="280">280</option>
+              <option value="560">560</option>
+              <option value="1120">1120</option>
+            </select>
+            <small class="field-hint">
+              Higher values keep fine visual detail; lower values are faster.
+            </small>
+          </label>
+
+          <div class="status-stack">
+            <div class="status-chip">
+              <span class="status-label">Ollama</span>
+              <strong id="connectionStatus">Checking…</strong>
+            </div>
+            <p id="connectionDetail" class="status-detail">
+              Looking for a local Ollama server on <code>http://127.0.0.1:11434</code>.
+            </p>
+          </div>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-heading">
+            <h2>Chat history</h2>
+            <button id="newChatButton" class="ghost-button" type="button">New chat</button>
+          </div>
+          <p id="storageStatus" class="field-hint">
+            Chat history is always saved by the app. Choose a folder if you also want a normal JSON file there.
+          </p>
+          <div class="history-storage-actions">
+            <button id="chooseFolderButton" class="ghost-button folder-action-button" type="button">
+              <span>Choose folder</span>
+            </button>
+          </div>
+          <div class="history-storage-actions history-storage-actions-secondary">
+            <button id="exportHistoryButton" class="ghost-button history-mini-button" type="button">Export</button>
+            <button id="importHistoryButton" class="ghost-button history-mini-button" type="button">Import</button>
+            <input id="importHistoryInput" type="file" accept=".json,application/json" hidden />
+          </div>
+          <div id="historyList" class="history-list" role="list"></div>
+          <button id="clearHistoryButton" class="ghost-button ghost-button-block" type="button">Clear chat history</button>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-heading">
+            <h2>System Prompt</h2>
+          </div>
+          <p class="support-copy">
+            This instruction is sent before the conversation and is saved with the current chat session.
+          </p>
+          <label class="field">
+            <span>Instruction</span>
+            <textarea
+              id="systemPromptInput"
+              class="system-prompt-input"
+              rows="6"
+              placeholder="Set the assistant behavior, tone, constraints, or output format."
+            ></textarea>
+          </label>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-heading">
+            <h2>Audio Input</h2>
+            <span id="voiceBadge" class="voice-badge">Idle</span>
+          </div>
+          <p class="support-copy">
+            The microphone button uses in-browser speech recognition and appends the transcript into the composer.
+          </p>
+
+          <div class="meter-shell" aria-hidden="true">
+            <div id="meterBar" class="meter-bar"></div>
+          </div>
+
+          <p id="voiceHint" class="voice-hint">
+            Press the mic, speak naturally, then send the transcribed prompt.
+          </p>
+        </section>
+
+        <section class="rail-section rail-section-tight">
+          <button id="clearChatButton" class="ghost-button ghost-button-block" type="button">Clear conversation</button>
+        </section>
+      </aside>
+
+      <main class="chat-stage">
+        <header id="chatHeader" class="chat-header">
+          <div class="chat-header-copy">
+            <h2 id="chatTitle">New chat</h2>
+            <p id="chatTitleStatus" class="chat-title-status" hidden></p>
+          </div>
+          <div class="header-meta">
+            <span id="speedPill" class="model-pill stat-pill" hidden>
+              <span class="speedometer-icon" aria-hidden="true"></span>
+              <span id="speedPillValue">0.0 tok/s</span>
+            </span>
+            <span id="contextPill" class="model-pill">Context 0 / 8,192</span>
+          </div>
+        </header>
+
+        <section id="messageList" class="message-list" aria-live="polite"></section>
+
+        <form id="composerForm" class="composer-panel">
+          <div
+            id="composerTopbar"
+            class="composer-topbar"
+            role="button"
+            tabindex="0"
+            aria-expanded="true"
+            aria-controls="composerBody"
+            aria-label="Collapse or expand message composer"
+          >
+            <div class="composer-topbar-copy">
+              <span class="composer-label">Message</span>
+              <span id="composerCollapseHint" class="composer-collapse-hint">Tap anywhere here to collapse</span>
+            </div>
+          </div>
+
+          <div id="composerBody" class="composer-body">
+            <input id="imageInput" type="file" accept="image/*" multiple hidden />
+
+            <div id="imagePreviewList" class="image-preview-list" hidden></div>
+
+            <div id="promptDropzone" class="prompt-dropzone">
+              <textarea
+                id="promptInput"
+                rows="4"
+                placeholder="Ask your local model something, use the mic to dictate, or drag and drop images here."
+              ></textarea>
+              <div class="dropzone-copy" aria-hidden="true">Drag and drop images here</div>
+              <div class="dropzone-hint" aria-hidden="true">Drop images here</div>
+            </div>
+
+            <div class="composer-footer">
+              <div class="composer-actions">
+                <button id="micButton" class="ghost-button" type="button">Start mic</button>
+                <button id="attachImageButton" class="icon-button composer-icon-button" type="button" aria-label="Add image" title="Add image">
+                  <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+                    <rect x="2.2" y="3" width="15.6" height="14" rx="2.2" stroke="currentColor" stroke-width="1.4"/>
+                    <circle cx="6.6" cy="7.2" r="1.5" fill="currentColor"/>
+                    <path d="M4.5 14.2 8.3 10.6a1 1 0 0 1 1.4 0l1.8 1.7a1 1 0 0 0 1.4 0l1.2-1.2a1 1 0 0 1 1.4 0l1.5 1.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </button>
+                <button id="sendButton" class="primary-button" type="submit">Send</button>
+                <button id="stopButton" class="ghost-button" type="button" hidden>Stop</button>
+              </div>
+              <p class="composer-tip">Press <kbd>Enter</kbd> to send. Use <kbd>Shift</kbd> + <kbd>Enter</kbd> for a new line.</p>
+            </div>
+          </div>
+        </form>
+      </main>
+    </div>
+
+    <template id="emptyStateTemplate">
+      <div class="empty-state">
+        <p class="eyebrow">Ready</p>
+        <h3>Start the first exchange</h3>
+        <p>
+          Make sure Ollama is running locally, select the model tag you downloaded, then send a prompt.
+        </p>
+      </div>
+    </template>
+
+    <div id="imageLightbox" class="image-lightbox" hidden>
+      <button id="imageLightboxBackdrop" class="image-lightbox-backdrop" type="button" aria-label="Close image viewer"></button>
+      <div class="image-lightbox-dialog" role="dialog" aria-modal="true" aria-label="Image viewer">
+        <button id="imageLightboxClose" class="image-lightbox-close" type="button" aria-label="Close image viewer">x</button>
+        <img id="imageLightboxImage" class="image-lightbox-image" alt="" />
+      </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
