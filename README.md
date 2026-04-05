@@ -247,14 +247,20 @@ That iterative history is still visible in the current feature set: most things 
 
 ## Project Structure
 
-- `server.js`: local HTTP server, Ollama proxy, persistence, title/context helpers
+- `server.js`: local HTTP server, Ollama proxy, persistence, title generation, and exact context helpers
 - `public/index.html`: UI markup
 - `public/styles.css`: styling
-- `public/app.js`: app bootstrap and composition
-- `public/chat.js`: request building and streaming
-- `public/media.js`: image handling and mic dictation
-- `public/render.js`: message rendering and markdown
-- `public/history.js`: history composition
+- `public/app.js`: app bootstrap and top-level composition
+- `public/app-events.js`: DOM event wiring
+- `public/app-shared.js`: shared normalization and prompt helpers
+- `public/model-context.js`: model status, connection state, and context recommendation logic
+- `public/chat.js`: request building, streaming, session title generation, and context measurement
+- `public/media.js`: image handling, drag and drop, lightbox behavior, and mic dictation
+- `public/render.js`: message rendering, markdown rendering, and message-level UI interactions
+- `public/history.js`: history composition layer
+- `public/history-storage.js`: persistence backends, import/export, and folder mirroring
+- `public/history-sessions.js`: session CRUD, active chat switching, and history-list rendering
+- `public/history-session-utils.js`: session normalization and merge helpers
 
 ## License
 
