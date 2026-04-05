@@ -215,6 +215,62 @@ Best results:
 
 Folder mirroring depends on browser support for choosing a local folder. The app still works without it.
 
+## Benchmarking Gemma 4 Speed
+
+This repo includes a local benchmark script for comparing token output speed across Gemma 4 variants with thinking on and off.
+
+Default benchmark coverage:
+
+- models: `gemma4:e2b` and `gemma4:e4b`
+- prompts: 5 built-in prompts
+- thinking modes: off and on
+- output metric: `tok/s` from Ollama's `eval_count / eval_duration`
+- summary stats: average, min, and max speed
+
+Run it with:
+
+```bash
+npm run benchmark:gemma-speed
+```
+
+Useful options:
+
+```bash
+node scripts/benchmark-gemma-speed.js --repeat 2
+node scripts/benchmark-gemma-speed.js --num-predict 300
+node scripts/benchmark-gemma-speed.js --output data/gemma-speed-results.json
+node scripts/benchmark-gemma-speed.js --models gemma4:e2b,gemma4:e4b
+```
+
+Notes:
+
+- thinking-on speed includes the actual extra generated reasoning tokens
+- prompts are normalized with a target answer length so runs are more comparable
+- the benchmark talks directly to your local Ollama instance, not the browser UI
+
+### Example benchmark result
+
+The full local comparison was run with these parameters:
+
+- models: `gemma4:e2b`, `gemma4:e4b`
+- prompts: 5 built-in prompts
+- thinking modes: off and on
+- repeat: `1`
+- `num_ctx`: `8192`
+- `num_predict`: `220`
+- sampling: `temperature=1.0`, `top_p=0.95`, `top_k=64`
+
+Observed result from that run:
+
+| Model | Thinking | Avg tok/s | Min tok/s | Max tok/s | Runs |
+| :--- | :--- | ---: | ---: | ---: | ---: |
+| `gemma4:e2b` | Off | 50.7 | 49.8 | 51.6 | 5 |
+| `gemma4:e2b` | On | 50.9 | 50.0 | 51.9 | 5 |
+| `gemma4:e4b` | Off | 30.0 | 29.1 | 30.8 | 5 |
+| `gemma4:e4b` | On | 30.3 | 29.9 | 30.8 | 5 |
+
+In this run, `gemma4:e2b` was roughly `1.7x` faster than `gemma4:e4b`, while thinking on/off changed output speed only slightly.
+
 ## Troubleshooting
 
 ### Ollama shows as offline

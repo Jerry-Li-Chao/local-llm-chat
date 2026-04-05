@@ -5,6 +5,7 @@
   "description": "Local chat interface for Ollama-hosted models with text, images, and microphone dictation.",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "benchmark:gemma-speed": "node scripts/benchmark-gemma-speed.js"
   }
 }
