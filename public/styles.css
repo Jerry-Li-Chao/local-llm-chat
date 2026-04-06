@@ -750,6 +750,24 @@ textarea:focus {
   color: var(--muted);
 }
 
+.message-model {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: #666;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.message-debug {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  color: #777;
+}
+
 .message-copy-button {
   appearance: none;
   border: 1px solid rgba(17, 17, 17, 0.08);

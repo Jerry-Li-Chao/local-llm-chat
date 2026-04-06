@@ -314,6 +314,9 @@ export function createChatManager({
       return;
     }
 
+    const modelName = elements.modelInput.value.trim();
+    const requestThinkingEnabled = shouldUseThinkingMode();
+    const requestSystemPrompt = elements.systemPromptInput.value.trim();
     const requestStartedAt = performance.now();
     const activeSession = getActiveSession();
     const shouldGenerateTitle = Boolean(
@@ -331,15 +334,18 @@ export function createChatManager({
     const conversation = getConversationMessages();
     const assistantIndex = state.messages.push({
       role: 'assistant',
+      model: modelName,
+      requestThinkingEnabled,
+      requestSystemPrompt,
       content: '',
       streaming: true,
-      thoughtExpanded: shouldUseThinkingMode(),
+      thoughtExpanded: requestThinkingEnabled,
     }) - 1;
     persistState({ historyMode: 'none' });
     renderMessages();
 
     const requestBody = {
-      model: elements.modelInput.value.trim(),
+      model: modelName,
       messages: conversation,
       options: buildOptions(),
     };

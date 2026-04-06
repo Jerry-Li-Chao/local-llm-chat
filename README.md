@@ -252,6 +252,7 @@ Notes:
 
 The full local comparison was run with these parameters:
 
+- hardware: MacBook Pro with Apple M1 Pro and 16 GB memory
 - models: `gemma4:e2b`, `gemma4:e4b`
 - prompts: 5 built-in prompts
 - thinking modes: off and on
@@ -259,6 +260,8 @@ The full local comparison was run with these parameters:
 - `num_ctx`: `8192`
 - `num_predict`: `220`
 - sampling: `temperature=1.0`, `top_p=0.95`, `top_k=64`
+
+In day-to-day use on this machine, the practical context setting is generally capped around `8,192` tokens.
 
 Observed result from that run:
 
@@ -303,7 +306,14 @@ That iterative history is still visible in the current feature set: most things 
 
 ## Project Structure
 
-- `server.js`: local HTTP server, Ollama proxy, persistence, title generation, and exact context helpers
+- `server.js`: thin server entrypoint
+- `server/config.js`: runtime paths, limits, and host configuration
+- `server/router.js`: route matching and dispatch
+- `server/handlers/api-handlers.js`: HTTP handlers for chat, status, history, and helpers
+- `server/services/ollama-service.js`: Ollama API calls and response shaping
+- `server/services/history-service.js`: chat-history normalization and disk persistence
+- `server/services/static-service.js`: static asset serving
+- `server/utils/http.js`: JSON body parsing and response helpers
 - `public/index.html`: UI markup
 - `public/styles.css`: styling
 - `public/app.js`: app bootstrap and top-level composition

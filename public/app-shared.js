@@ -70,6 +70,9 @@ export function normalizeMessages(messages) {
       if (message.role !== 'assistant' || typeof message.content !== 'string') {
         return {
           ...message,
+          model: typeof message.model === 'string' ? message.model.trim() : '',
+          requestThinkingEnabled: Boolean(message.requestThinkingEnabled),
+          requestSystemPrompt: typeof message.requestSystemPrompt === 'string' ? message.requestSystemPrompt : '',
           images: normalizedImages,
         };
       }
@@ -77,6 +80,9 @@ export function normalizeMessages(messages) {
       const { content } = stripThinkingContent(message.content);
       return {
         ...message,
+        model: typeof message.model === 'string' ? message.model.trim() : '',
+        requestThinkingEnabled: Boolean(message.requestThinkingEnabled),
+        requestSystemPrompt: typeof message.requestSystemPrompt === 'string' ? message.requestSystemPrompt : '',
         content,
         thought: message.thought || null,
         images: normalizedImages,

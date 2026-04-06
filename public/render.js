@@ -306,6 +306,47 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     toggle.setAttribute('aria-expanded', String(expanded));
   }
 
+  function syncMessageMeta(meta, message) {
+    const label = meta.querySelector('.message-label');
+    const modelTag = meta.querySelector('.message-model');
+    const debugTag = meta.querySelector('.message-debug');
+
+    if (label) {
+      label.textContent = message.role;
+    }
+
+    if (!modelTag) {
+      return;
+    }
+
+    const showModel = message.role === 'assistant' && typeof message.model === 'string' && message.model.trim();
+    modelTag.hidden = !showModel;
+    modelTag.textContent = showModel ? message.model.trim() : '';
+
+    if (!debugTag) {
+      return;
+    }
+
+    const hasDebugInfo = message.role === 'assistant'
+      && ('requestThinkingEnabled' in message || 'requestSystemPrompt' in message);
+
+    debugTag.hidden = !hasDebugInfo;
+
+    if (!hasDebugInfo) {
+      debugTag.textContent = '';
+      return;
+    }
+
+    const promptSnapshot = typeof message.requestSystemPrompt === 'string'
+      ? message.requestSystemPrompt.trim()
+      : '';
+    const promptLabel = promptSnapshot
+      ? `system prompt "${promptSnapshot.length > 48 ? `${promptSnapshot.slice(0, 45)}...` : promptSnapshot}"`
+      : 'system prompt none';
+
+    debugTag.textContent = `thinking ${message.requestThinkingEnabled ? 'on' : 'off'} • ${promptLabel}`;
+  }
+
   function makeMessageNode(message, index) {
     const article = document.createElement('article');
     article.className = `message ${message.role}${message.streaming ? ' streaming' : ''}`;
@@ -317,6 +358,14 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     const label = document.createElement('span');
     label.className = 'message-label';
     label.textContent = message.role;
+
+    const modelTag = document.createElement('span');
+    modelTag.className = 'message-model';
+    modelTag.hidden = true;
+
+    const debugTag = document.createElement('span');
+    debugTag.className = 'message-debug';
+    debugTag.hidden = true;
 
     const actions = document.createElement('div');
     actions.className = 'message-actions';
@@ -361,7 +410,8 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     setThoughtContent(thoughtPanel, message);
 
     actions.append(copyMarkdownButton, copyPlainButton);
-    meta.append(label);
+    meta.append(label, modelTag, debugTag);
+    syncMessageMeta(meta, message);
     article.append(meta);
     if (message.role === 'assistant') {
       article.append(thoughtPanel);
@@ -389,7 +439,7 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     }
 
     node.className = `message ${message.role}${message.streaming ? ' streaming' : ''}`;
-    node.querySelector('.message-label').textContent = message.role;
+    syncMessageMeta(node.querySelector('.message-meta'), message);
     node.querySelectorAll('.message-copy-button').forEach((button) => {
       button.dataset.messageIndex = String(index);
     });
