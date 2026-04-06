@@ -59,6 +59,7 @@ export function normalizeMessages(messages) {
         ? message.images
           .filter((image) => image && typeof image === 'object')
           .map((image) => ({
+            assetId: typeof image.assetId === 'string' ? image.assetId : '',
             name: typeof image.name === 'string' ? image.name : 'image',
             mimeType: typeof image.mimeType === 'string' ? image.mimeType : 'image/png',
             data: typeof image.data === 'string' ? image.data : '',
@@ -106,8 +107,30 @@ export function compactSessionsForLocalStorage(sessions) {
         ...message,
         images: Array.isArray(message.images)
           ? message.images.map((image) => ({
+            assetId: image.assetId,
             name: image.name,
             mimeType: image.mimeType,
+          }))
+          : [],
+      }))
+      : [],
+  }));
+}
+
+export function compactSessionsForServerHistory(sessions) {
+  return sessions.map((session) => ({
+    ...session,
+    messages: Array.isArray(session.messages)
+      ? session.messages.map((message) => ({
+        ...message,
+        images: Array.isArray(message.images)
+          ? message.images.map((image) => ({
+            assetId: typeof image.assetId === 'string' ? image.assetId : '',
+            name: image.name,
+            mimeType: image.mimeType,
+            ...(typeof image.assetId === 'string' && image.assetId
+              ? {}
+              : { data: typeof image.data === 'string' ? image.data : '' }),
           }))
           : [],
       }))

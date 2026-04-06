@@ -7,6 +7,7 @@ export function createHistoryStorageController({
   defaultVisualTokenBudget,
   normalizeMessages,
   compactSessionsForLocalStorage,
+  compactSessionsForServerHistory,
   normalizeSessionsFromStorage,
   mergeSessions,
   getActiveSession,
@@ -248,13 +249,47 @@ export function createHistoryStorageController({
     debounceHistorySave(500);
   }
 
+  function applyReturnedImageAssetIds(savedSessions = []) {
+    if (!Array.isArray(savedSessions)) {
+      return;
+    }
+
+    const sessionMap = new Map(savedSessions.map((session) => [session.id, session]));
+
+    state.sessions.forEach((session) => {
+      const savedSession = sessionMap.get(session.id);
+
+      if (!savedSession || !Array.isArray(session.messages) || !Array.isArray(savedSession.messages)) {
+        return;
+      }
+
+      session.messages.forEach((message, messageIndex) => {
+        const savedMessage = savedSession.messages[messageIndex];
+
+        if (!savedMessage || !Array.isArray(message.images) || !Array.isArray(savedMessage.images)) {
+          return;
+        }
+
+        message.images.forEach((image, imageIndex) => {
+          const savedImage = savedMessage.images[imageIndex];
+
+          if (!savedImage?.assetId) {
+            return;
+          }
+
+          image.assetId = savedImage.assetId;
+        });
+      });
+    });
+  }
+
   async function saveHistoryToServer() {
     const response = await fetch('/api/chat-history', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ sessions: state.sessions }),
+      body: JSON.stringify({ sessions: compactSessionsForServerHistory(state.sessions) }),
     });
 
     const payload = await response.json().catch(() => ({ ok: false }));
@@ -262,6 +297,8 @@ export function createHistoryStorageController({
     if (!response.ok || !payload.ok) {
       throw new Error(payload.error || `Could not save chat history (${response.status}).`);
     }
+
+    applyReturnedImageAssetIds(payload.sessions);
   }
 
   async function saveHistoryToBackends() {

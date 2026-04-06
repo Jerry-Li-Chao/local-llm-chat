@@ -10,6 +10,7 @@ const DATA_DIR = process.env.DATA_DIR
 const CHAT_HISTORY_PATH = process.env.CHAT_HISTORY_PATH
   ? path.resolve(process.cwd(), process.env.CHAT_HISTORY_PATH)
   : path.join(DATA_DIR, 'chat-history.json');
+const CHAT_ASSETS_DIR = path.join(DATA_DIR, 'chat-assets');
 const DEFAULT_BODY_LIMIT = 1_000_000;
 const MULTIMODAL_BODY_LIMIT = 50_000_000;
 
@@ -28,6 +29,7 @@ module.exports = {
   PUBLIC_DIR,
   DATA_DIR,
   CHAT_HISTORY_PATH,
+  CHAT_ASSETS_DIR,
   DEFAULT_BODY_LIMIT,
   MULTIMODAL_BODY_LIMIT,
   MIME_TYPES,

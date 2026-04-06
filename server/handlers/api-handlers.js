@@ -46,16 +46,18 @@ function createApiHandlers({
 
     try {
       const sessions = historyService.normalizeHistorySessions(payload.sessions);
-      await historyService.saveSessionsToDisk(sessions);
+      const savedSessions = await historyService.saveSessionsToDisk(sessions);
       writeJson(res, 200, {
         ok: true,
         saved: sessions.length,
+        sessions: savedSessions,
       });
     } catch (error) {
       writeJson(res, 500, {
         ok: false,
         error: error.message,
         saved: 0,
+        sessions: [],
       });
     }
   }

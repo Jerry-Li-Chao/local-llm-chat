@@ -6,6 +6,7 @@ const {
   OLLAMA_BASE_URL,
   PUBLIC_DIR,
   CHAT_HISTORY_PATH,
+  CHAT_ASSETS_DIR,
   DEFAULT_BODY_LIMIT,
   MULTIMODAL_BODY_LIMIT,
   MIME_TYPES,
@@ -19,6 +20,7 @@ const { createRouter } = require('./server/router.js');
 
 const historyService = createHistoryService({
   chatHistoryPath: CHAT_HISTORY_PATH,
+  chatAssetsDir: CHAT_ASSETS_DIR,
 });
 
 const ollamaService = createOllamaService({

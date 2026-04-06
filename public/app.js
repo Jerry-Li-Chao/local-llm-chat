@@ -1,5 +1,6 @@
 import {
   compactSessionsForLocalStorage,
+  compactSessionsForServerHistory,
   getSystemPromptContent,
   normalizeMessages,
   shouldUseThinkingMode,
@@ -271,6 +272,7 @@ const historyManager = createHistoryManager({
   defaultVisualTokenBudget: DEFAULT_VISUAL_TOKEN_BUDGET,
   normalizeMessages,
   compactSessionsForLocalStorage,
+  compactSessionsForServerHistory,
   updateContextPill,
   updateContextHint,
   updateChatHeader,
