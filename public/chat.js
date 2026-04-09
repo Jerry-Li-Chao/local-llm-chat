@@ -6,7 +6,8 @@ export function createChatManager({
   defaultVisualTokenBudget,
   stripThinkingContent,
   shouldUseThinkingMode,
-  getSystemPromptContent,
+  isWebSearchEnabled,
+  getClientContext,
   getActiveSession,
   persistState,
   updateSessionTitle,
@@ -97,14 +98,7 @@ export function createChatManager({
   }
 
   function getConversationMessages() {
-    const messages = visibleMessages();
-    const systemPrompt = getSystemPromptContent();
-
-    if (!systemPrompt) {
-      return messages;
-    }
-
-    return [{ role: 'system', content: systemPrompt }, ...messages];
+    return visibleMessages();
   }
 
   function parseStreamingChunkBuffer(buffer, onChunk) {
@@ -124,6 +118,102 @@ export function createChatManager({
     return tail;
   }
 
+  function mergeWebSearchPatch(currentWebSearch, patch) {
+    const current = currentWebSearch && typeof currentWebSearch === 'object'
+      ? currentWebSearch
+      : {
+        enabled: false,
+        query: '',
+        status: 'idle',
+        compactedChars: 0,
+        activityLabel: '',
+        error: '',
+        visits: [],
+        sources: [],
+      };
+
+    return {
+      ...current,
+      ...patch,
+      visits: Array.isArray(patch?.visits) ? patch.visits : current.visits,
+      sources: Array.isArray(patch?.sources) ? patch.sources : current.sources,
+    };
+  }
+
+  function updateWebSearchState(messageIndex, patch, options = {}) {
+    const currentWebSearch = state.messages[messageIndex]?.webSearch;
+
+    updateMessage(messageIndex, {
+      webSearch: mergeWebSearchPatch(currentWebSearch, patch),
+    }, options);
+  }
+
+  function upsertWebVisit(visits = [], event) {
+    const nextVisits = Array.isArray(visits) ? visits.map((visit) => ({ ...visit })) : [];
+    const visitIndex = nextVisits.findIndex((visit) => (
+      (event.url && visit.url === event.url)
+      || (event.domain && visit.domain === event.domain && visit.index === event.index)
+      || (Number.isFinite(event.index) && visit.index === event.index)
+    ));
+    const nextVisit = {
+      index: Number.isFinite(event.index) ? Number(event.index) : nextVisits.length + 1,
+      status: typeof event.status === 'string' ? event.status : 'loading',
+      domain: event.domain || '',
+      title: event.title || '',
+      url: event.url || '',
+    };
+
+    if (visitIndex === -1) {
+      nextVisits.push(nextVisit);
+    } else {
+      nextVisits[visitIndex] = {
+        ...nextVisits[visitIndex],
+        ...nextVisit,
+      };
+    }
+
+    return nextVisits.sort((left, right) => left.index - right.index);
+  }
+
+  function applyWebEvent(messageIndex, event) {
+    const currentWebSearch = state.messages[messageIndex]?.webSearch || null;
+
+    if (event.phase === 'searching') {
+      updateWebSearchState(messageIndex, {
+        enabled: true,
+        query: event.query || currentWebSearch?.query || '',
+        status: 'searching',
+        activityLabel: event.label || 'Searching the web',
+        error: '',
+      }, { historyMode: 'none' });
+      return;
+    }
+
+    if (event.phase === 'visiting') {
+      const visits = upsertWebVisit(currentWebSearch?.visits, event);
+      updateWebSearchState(messageIndex, {
+        enabled: true,
+        status: 'visiting',
+        activityLabel: event.label || `Visiting ${event.domain || 'source'}`,
+        visits,
+        error: event.status === 'error' ? (event.error || currentWebSearch?.error || '') : '',
+      }, { historyMode: 'none' });
+      return;
+    }
+
+    if (event.phase === 'ready') {
+      updateWebSearchState(messageIndex, {
+        enabled: true,
+        query: event.query || currentWebSearch?.query || '',
+        status: 'ready',
+        compactedChars: Number.isFinite(event.compactedChars) ? Number(event.compactedChars) : 0,
+        activityLabel: event.label || 'Web sources compacted',
+        sources: Array.isArray(event.sources) ? event.sources : currentWebSearch?.sources || [],
+        error: '',
+      }, { historyMode: 'none' });
+    }
+  }
+
   async function measureCurrentConversationContextUsage({ historyMode = 'immediate' } = {}) {
     if (contextUsageTimer) {
       window.clearTimeout(contextUsageTimer);
@@ -141,6 +231,7 @@ export function createChatManager({
     }
 
     const conversation = getConversationMessages();
+    const clientContext = getClientContext();
 
     if (!conversation.length) {
       applyContextUsage(0, historyMode);
@@ -158,6 +249,9 @@ export function createChatManager({
         body: JSON.stringify({
           model: elements.modelInput.value.trim(),
           messages: conversation,
+          systemPrompt: elements.systemPromptInput.value.trim(),
+          thinkingMode: shouldUseThinkingMode(),
+          clientContext,
           options: buildOptions(),
         }),
       });
@@ -327,19 +421,34 @@ export function createChatManager({
     );
     const titleSessionId = activeSession?.id || null;
     const titlePrompt = String(prompt || '').trim();
+    const requestWebSearchEnabled = isWebSearchEnabled() && Boolean(titlePrompt);
 
     addMessage('user', prompt, {
       images: attachments,
     }, { historyMode: 'immediate' });
     const conversation = getConversationMessages();
+    const clientContext = getClientContext();
     const assistantIndex = state.messages.push({
       role: 'assistant',
       model: modelName,
       requestThinkingEnabled,
+      requestWebSearchEnabled,
       requestSystemPrompt,
       content: '',
       streaming: true,
       thoughtExpanded: requestThinkingEnabled,
+      webSearch: requestWebSearchEnabled
+        ? {
+          enabled: true,
+          query: titlePrompt,
+          status: 'searching',
+          compactedChars: 0,
+          activityLabel: `Searching the web for "${titlePrompt || 'your prompt'}"`,
+          error: '',
+          visits: [],
+          sources: [],
+        }
+        : null,
     }) - 1;
     persistState({ historyMode: 'none' });
     renderMessages();
@@ -347,7 +456,12 @@ export function createChatManager({
     const requestBody = {
       model: modelName,
       messages: conversation,
+      systemPrompt: requestSystemPrompt,
+      thinkingMode: requestThinkingEnabled,
+      clientContext,
       options: buildOptions(),
+      webSearch: requestWebSearchEnabled,
+      webSearchQuery: titlePrompt,
     };
 
     state.abortController = new AbortController();
@@ -373,6 +487,51 @@ export function createChatManager({
       let buffer = '';
       let fullReply = '';
       let fullThought = '';
+      let receivedGenerationStats = false;
+
+      const consumeChunk = (chunk) => {
+        if (chunk?.type === 'web') {
+          applyWebEvent(assistantIndex, chunk);
+          return;
+        }
+
+        if (chunk?.type === 'error') {
+          throw new Error(chunk.error || 'Request failed.');
+        }
+
+        const delta = chunk.message?.content || '';
+        const thinkingDelta = chunk.message?.thinking || '';
+
+        if (delta) {
+          fullReply += delta;
+        }
+
+        if (thinkingDelta) {
+          fullThought += thinkingDelta;
+        }
+
+        if (!(delta || thinkingDelta || chunk.done)) {
+          return;
+        }
+
+        const { content, thought } = stripThinkingContent(fullReply);
+        const nextThought = fullThought || thought || null;
+        const nextContent = content || (chunk.done ? 'No content returned.' : '');
+        const evalCount = Number.isFinite(chunk.eval_count) ? Number(chunk.eval_count) : null;
+        const evalDuration = Number.isFinite(chunk.eval_duration) ? Number(chunk.eval_duration) : null;
+
+        if (chunk.done && evalCount !== null && evalDuration !== null) {
+          receivedGenerationStats = true;
+          applyGenerationSpeed(evalCount, evalDuration, 'none');
+        }
+
+        updateMessage(assistantIndex, {
+          content: nextContent,
+          rawContent: fullReply,
+          thought: nextThought,
+          streaming: !chunk.done,
+        }, { historyMode: chunk.done ? 'immediate' : 'none' });
+      };
 
       while (true) {
         const { value, done } = await reader.read();
@@ -382,64 +541,26 @@ export function createChatManager({
         }
 
         buffer += decoder.decode(value, { stream: true });
-        buffer = parseStreamingChunkBuffer(buffer, (chunk) => {
-          const delta = chunk.message?.content || '';
-          const thinkingDelta = chunk.message?.thinking || '';
-
-          if (delta) {
-            fullReply += delta;
-          }
-
-          if (thinkingDelta) {
-            fullThought += thinkingDelta;
-          }
-
-          if (delta || thinkingDelta || chunk.done) {
-            const { content, thought } = stripThinkingContent(fullReply);
-            const nextThought = fullThought || thought || null;
-            const nextContent = content || (chunk.done ? 'No content returned.' : '');
-            const evalCount = Number.isFinite(chunk.eval_count) ? Number(chunk.eval_count) : null;
-            const evalDuration = Number.isFinite(chunk.eval_duration) ? Number(chunk.eval_duration) : null;
-
-            if (chunk.done && evalCount !== null && evalDuration !== null) {
-              applyGenerationSpeed(evalCount, evalDuration, 'none');
-            }
-
-            updateMessage(assistantIndex, {
-              content: nextContent,
-              rawContent: fullReply,
-              thought: nextThought,
-              streaming: !chunk.done,
-            }, { historyMode: chunk.done ? 'immediate' : 'none' });
-          }
-        });
+        buffer = parseStreamingChunkBuffer(buffer, consumeChunk);
       }
 
       if (buffer.trim()) {
-        const finalChunk = JSON.parse(buffer.trim());
-        const delta = finalChunk.message?.content || '';
-        const thinkingDelta = finalChunk.message?.thinking || '';
-        const finalReply = delta ? `${fullReply}${delta}` : fullReply;
-        const finalThought = thinkingDelta ? `${fullThought}${thinkingDelta}` : fullThought;
-        const { content, thought } = stripThinkingContent(finalReply);
-        const evalCount = Number.isFinite(finalChunk.eval_count) ? Number(finalChunk.eval_count) : null;
-        const evalDuration = Number.isFinite(finalChunk.eval_duration) ? Number(finalChunk.eval_duration) : null;
+        consumeChunk(JSON.parse(buffer.trim()));
+      }
 
-        if (evalCount !== null && evalDuration !== null) {
-          applyGenerationSpeed(evalCount, evalDuration, 'none');
-        } else {
-          const estimatedTokens = estimateTextTokens(content);
-          const elapsedNs = Math.max(1, Math.round((performance.now() - requestStartedAt) * 1_000_000));
+      if (!receivedGenerationStats) {
+        const { content, thought } = stripThinkingContent(fullReply);
+        const estimatedTokens = estimateTextTokens(content);
+        const elapsedNs = Math.max(1, Math.round((performance.now() - requestStartedAt) * 1_000_000));
 
-          if (estimatedTokens > 0) {
-            applyGenerationSpeed(estimatedTokens, elapsedNs, 'none', true);
-          }
+        if (estimatedTokens > 0) {
+          applyGenerationSpeed(estimatedTokens, elapsedNs, 'none', true);
         }
 
         updateMessage(assistantIndex, {
           content: content || 'No content returned.',
-          rawContent: finalReply,
-          thought: finalThought || thought || null,
+          rawContent: fullReply,
+          thought: fullThought || thought || null,
           streaming: false,
         }, { historyMode: 'immediate' });
       }
@@ -449,6 +570,12 @@ export function createChatManager({
         role: 'error',
         content: wasAbort ? 'Generation stopped.' : error.message,
         streaming: false,
+        webSearch: requestWebSearchEnabled
+          ? mergeWebSearchPatch(state.messages[assistantIndex]?.webSearch, {
+            status: wasAbort ? 'idle' : 'error',
+            error: wasAbort ? '' : error.message,
+          })
+          : null,
       }, { historyMode: 'immediate' });
     } finally {
       state.abortController = null;

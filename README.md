@@ -17,6 +17,7 @@ It is designed for people who want a cleaner local chat interface than the termi
 - Tracks context usage and generation speed
 - Stores chat history locally with optional folder mirroring
 - Lets each chat keep its own system prompt and settings
+- Adds a hidden runtime system prompt on the server with request-time local date/time, inferred location, and harness web-search availability
 
 ## Why Gemma 4
 
@@ -111,7 +112,7 @@ Responses stream into the UI as they are generated.
 
 ### 2. Thinking mode
 
-For Gemma 4, thinking mode prepends `<|think|>` to the system prompt. The UI can show reasoning separately while still keeping persisted multi-turn history clean by storing only the final answer.
+For Gemma 4, thinking mode prepends `<|think|>` to the server-built system prompt. The UI can show reasoning separately while still keeping persisted multi-turn history clean by storing only the final answer.
 
 ### 3. Markdown rendering
 
@@ -124,6 +125,12 @@ You can attach images from the button or drag and drop them into the composer. I
 ### 5. Per-chat system prompts
 
 Each conversation keeps its own system prompt and session settings.
+
+The app also injects a hidden server-side system prompt on every request with:
+
+- the user's local date and time for that request
+- the user's inferred location from browser locale and time zone
+- a note that web search is available through the app harness when enabled
 
 ### 6. Chat history
 

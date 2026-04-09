@@ -14,6 +14,8 @@ const {
 const { writeJson, readJsonBody } = require('./server/utils/http.js');
 const { createHistoryService } = require('./server/services/history-service.js');
 const { createOllamaService } = require('./server/services/ollama-service.js');
+const { createRuntimePromptService } = require('./server/services/runtime-prompt-service.js');
+const { createWebSearchService } = require('./server/services/web-search-service.js');
 const { createStaticService } = require('./server/services/static-service.js');
 const { createApiHandlers } = require('./server/handlers/api-handlers.js');
 const { createRouter } = require('./server/router.js');
@@ -26,6 +28,10 @@ const historyService = createHistoryService({
 const ollamaService = createOllamaService({
   baseUrl: OLLAMA_BASE_URL,
 });
+
+const runtimePromptService = createRuntimePromptService();
+
+const webSearchService = createWebSearchService();
 
 const staticService = createStaticService({
   publicDir: PUBLIC_DIR,
@@ -41,6 +47,8 @@ const apiHandlers = createApiHandlers({
   ollamaBaseUrl: OLLAMA_BASE_URL,
   historyService,
   ollamaService,
+  runtimePromptService,
+  webSearchService,
 });
 
 const routeRequest = createRouter({

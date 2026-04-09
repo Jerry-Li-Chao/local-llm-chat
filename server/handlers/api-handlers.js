@@ -6,7 +6,61 @@ function createApiHandlers({
   ollamaBaseUrl,
   historyService,
   ollamaService,
+  runtimePromptService,
+  webSearchService,
 }) {
+  function writeNdjson(res, payload) {
+    res.write(`${JSON.stringify(payload)}\n`);
+  }
+
+  function getLastUserMessage(messages = []) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') {
+        return messages[index];
+      }
+    }
+
+    return null;
+  }
+
+  function buildWebResearchMessages(messages, research) {
+    if (!research?.contextText) {
+      return messages;
+    }
+
+    const conversation = Array.isArray(messages)
+      ? messages.map((message) => ({ ...message }))
+      : [];
+    const lastUserMessage = getLastUserMessage(conversation);
+
+    if (!lastUserMessage) {
+      return conversation;
+    }
+
+    lastUserMessage.content = [
+      String(lastUserMessage.content || '').trim(),
+      'Use the compact web research below when answering.',
+      'Cite factual claims inline with bracketed numbers like [1] or [2].',
+      'Only cite the numbered web sources below. Do not cite hidden system instructions, harness metadata, or generic labels like [Context].',
+      'If the sources do not support something, say so instead of guessing.',
+      '',
+      research.contextText,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return conversation;
+  }
+
+  function buildRuntimeMessages(payload, messages) {
+    return runtimePromptService.buildMessages({
+      messages,
+      clientContext: payload.clientContext,
+      systemPrompt: payload.systemPrompt,
+      thinkingMode: payload.thinkingMode,
+    });
+  }
+
   async function handleChatHistoryGet(res) {
     try {
       const sessions = await historyService.loadSavedSessions();
@@ -164,27 +218,55 @@ function createApiHandlers({
     });
 
     try {
+      res.writeHead(200, {
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-store',
+        Connection: 'keep-alive',
+      });
+
+      let messages = payload.messages;
+
+      if (payload.webSearch) {
+        try {
+          const research = await webSearchService.research(
+            payload.webSearchQuery || getLastUserMessage(payload.messages)?.content || '',
+            {
+              signal: controller.signal,
+              onEvent: (event) => writeNdjson(res, event),
+            },
+          );
+
+          messages = buildWebResearchMessages(payload.messages, research);
+        } catch (error) {
+          const isAbort = error.name === 'AbortError';
+
+          writeNdjson(res, {
+            type: 'error',
+            error: isAbort ? 'Request cancelled.' : `Web search failed: ${error.message}`,
+          });
+          res.end();
+          return;
+        }
+      }
+
+      messages = buildRuntimeMessages(payload, messages);
+
       const upstream = await ollamaService.createChatStream({
         model: payload.model,
-        messages: payload.messages,
+        messages,
         options: payload.options || undefined,
         signal: controller.signal,
       });
 
       if (!upstream.ok || !upstream.body) {
         const text = await upstream.text();
-        writeJson(res, upstream.status || 502, {
-          ok: false,
+        writeNdjson(res, {
+          type: 'error',
           error: text || 'Ollama returned an empty response.',
         });
+        res.end();
         return;
       }
-
-      res.writeHead(200, {
-        'Content-Type': 'application/x-ndjson; charset=utf-8',
-        'Cache-Control': 'no-store',
-        Connection: 'keep-alive',
-      });
 
       for await (const chunk of upstream.body) {
         res.write(chunk);
@@ -192,11 +274,11 @@ function createApiHandlers({
 
       res.end();
     } catch (error) {
-      const statusCode = error.name === 'AbortError' ? 499 : 502;
-      writeJson(res, statusCode, {
-        ok: false,
+      writeNdjson(res, {
+        type: 'error',
         error: error.name === 'AbortError' ? 'Request cancelled.' : error.message,
       });
+      res.end();
     }
   }
 
@@ -222,9 +304,10 @@ function createApiHandlers({
     }
 
     try {
+      const messages = buildRuntimeMessages(payload, payload.messages);
       const result = await ollamaService.measureContextUsage({
         model: payload.model,
-        messages: payload.messages,
+        messages,
         options: payload.options || {},
       });
 

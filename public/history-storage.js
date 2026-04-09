@@ -439,6 +439,12 @@ export function createHistoryStorageController({
         : String(defaultVisualTokenBudget);
       elements.composerForm.dataset.collapsed = parsed.composerCollapsed ? 'true' : 'false';
       elements.thinkingModeInput.checked = Boolean(parsed.thinkingMode);
+      if (elements.webSearchButton) {
+        const webSearchEnabled = Boolean(parsed.webSearchEnabled);
+        elements.webSearchButton.setAttribute('aria-pressed', String(webSearchEnabled));
+        elements.webSearchButton.dataset.active = webSearchEnabled ? 'true' : 'false';
+        elements.webSearchButton.title = webSearchEnabled ? 'Disable web search' : 'Enable web search';
+      }
       result.legacySessions = normalizeSessionsFromStorage(parsed.sessions);
     } catch (error) {
       console.error('Unable to load stored chat state.', error);
@@ -454,6 +460,7 @@ export function createHistoryStorageController({
       activeSession.messages = normalizeMessages(state.messages);
       activeSession.model = elements.modelInput.value.trim() || activeSession.model;
       activeSession.systemPrompt = elements.systemPromptInput.value;
+      activeSession.webSearchEnabled = elements.webSearchButton?.getAttribute('aria-pressed') === 'true';
       if (touchTimestamp) {
         activeSession.updatedAt = Date.now();
       }
@@ -467,6 +474,7 @@ export function createHistoryStorageController({
       contextCustomized: state.contextCustomized,
       composerCollapsed: elements.composerForm.dataset.collapsed === 'true',
       thinkingMode: elements.thinkingModeInput.checked,
+      webSearchEnabled: elements.webSearchButton?.getAttribute('aria-pressed') === 'true',
       visualTokenBudget: Number(elements.visualTokenBudgetInput.value),
       activeSessionId: state.activeSessionId,
       sessions: compactSessionsForLocalStorage(state.sessions),

@@ -37,14 +37,35 @@ export function shouldUseThinkingMode(elements) {
   return Boolean(elements.thinkingModeInput?.checked);
 }
 
-export function getSystemPromptContent(elements) {
-  const customPrompt = elements.systemPromptInput?.value?.trim() || '';
+export function isWebSearchEnabled(elements) {
+  return elements.webSearchButton?.getAttribute('aria-pressed') === 'true';
+}
 
-  if (!shouldUseThinkingMode(elements)) {
-    return customPrompt;
+export function setWebSearchEnabled(elements, enabled) {
+  if (!elements.webSearchButton) {
+    return;
   }
 
-  return customPrompt ? `<|think|>\n${customPrompt}` : '<|think|>';
+  const nextValue = Boolean(enabled);
+  elements.webSearchButton.setAttribute('aria-pressed', String(nextValue));
+  elements.webSearchButton.dataset.active = nextValue ? 'true' : 'false';
+  elements.webSearchButton.title = nextValue ? 'Disable web search' : 'Enable web search';
+}
+
+export function getClientContext() {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  const locale = navigator.language || Intl.DateTimeFormat().resolvedOptions().locale || '';
+  const languages = Array.isArray(navigator.languages)
+    ? navigator.languages.filter((value) => typeof value === 'string' && value.trim())
+    : [];
+  const timeZoneOffsetMinutes = new Date().getTimezoneOffset();
+
+  return {
+    timeZone,
+    locale,
+    languages,
+    timeZoneOffsetMinutes,
+  };
 }
 
 export function normalizeMessages(messages) {
@@ -67,13 +88,51 @@ export function normalizeMessages(messages) {
           }))
           .filter((image) => image.data || image.previewUrl)
         : [];
+      const normalizedWebSearch = message.webSearch && typeof message.webSearch === 'object'
+        ? {
+          enabled: Boolean(message.webSearch.enabled),
+          query: typeof message.webSearch.query === 'string' ? message.webSearch.query : '',
+          status: typeof message.webSearch.status === 'string' ? message.webSearch.status : 'idle',
+          compactedChars: Number.isFinite(message.webSearch.compactedChars)
+            ? Number(message.webSearch.compactedChars)
+            : 0,
+          activityLabel: typeof message.webSearch.activityLabel === 'string'
+            ? message.webSearch.activityLabel
+            : '',
+          error: typeof message.webSearch.error === 'string' ? message.webSearch.error : '',
+          visits: Array.isArray(message.webSearch.visits)
+            ? message.webSearch.visits
+              .filter((visit) => visit && typeof visit === 'object')
+              .map((visit) => ({
+                index: Number.isFinite(visit.index) ? Number(visit.index) : 0,
+                status: typeof visit.status === 'string' ? visit.status : 'idle',
+                domain: typeof visit.domain === 'string' ? visit.domain : '',
+                title: typeof visit.title === 'string' ? visit.title : '',
+                url: typeof visit.url === 'string' ? visit.url : '',
+              }))
+            : [],
+          sources: Array.isArray(message.webSearch.sources)
+            ? message.webSearch.sources
+              .filter((source) => source && typeof source === 'object')
+              .map((source) => ({
+                index: Number.isFinite(source.index) ? Number(source.index) : 0,
+                title: typeof source.title === 'string' ? source.title : '',
+                url: typeof source.url === 'string' ? source.url : '',
+                domain: typeof source.domain === 'string' ? source.domain : '',
+                snippet: typeof source.snippet === 'string' ? source.snippet : '',
+              }))
+            : [],
+        }
+        : null;
 
       if (message.role !== 'assistant' || typeof message.content !== 'string') {
         return {
           ...message,
           model: typeof message.model === 'string' ? message.model.trim() : '',
           requestThinkingEnabled: Boolean(message.requestThinkingEnabled),
+          requestWebSearchEnabled: Boolean(message.requestWebSearchEnabled),
           requestSystemPrompt: typeof message.requestSystemPrompt === 'string' ? message.requestSystemPrompt : '',
+          webSearch: normalizedWebSearch,
           images: normalizedImages,
         };
       }
@@ -83,9 +142,11 @@ export function normalizeMessages(messages) {
         ...message,
         model: typeof message.model === 'string' ? message.model.trim() : '',
         requestThinkingEnabled: Boolean(message.requestThinkingEnabled),
+        requestWebSearchEnabled: Boolean(message.requestWebSearchEnabled),
         requestSystemPrompt: typeof message.requestSystemPrompt === 'string' ? message.requestSystemPrompt : '',
         content,
         thought: message.thought || null,
+        webSearch: normalizedWebSearch,
         images: normalizedImages,
       };
     });
@@ -97,6 +158,7 @@ export function compactSessionsForLocalStorage(sessions) {
     title: session.title,
     model: session.model,
     systemPrompt: session.systemPrompt,
+    webSearchEnabled: Boolean(session.webSearchEnabled),
     contextUsage: session.contextUsage,
     generationSpeed: session.generationSpeed,
     generationSpeedApproximate: session.generationSpeedApproximate,
@@ -120,6 +182,7 @@ export function compactSessionsForLocalStorage(sessions) {
 export function compactSessionsForServerHistory(sessions) {
   return sessions.map((session) => ({
     ...session,
+    webSearchEnabled: Boolean(session.webSearchEnabled),
     messages: Array.isArray(session.messages)
       ? session.messages.map((message) => ({
         ...message,

@@ -1,8 +1,10 @@
 import {
   compactSessionsForLocalStorage,
   compactSessionsForServerHistory,
-  getSystemPromptContent,
+  getClientContext,
+  isWebSearchEnabled,
   normalizeMessages,
+  setWebSearchEnabled,
   shouldUseThinkingMode,
   stripThinkingContent,
 } from './app-shared.js';
@@ -60,6 +62,7 @@ const elements = {
   temperatureInput: document.querySelector('#temperatureInput'),
   voiceBadge: document.querySelector('#voiceBadge'),
   voiceHint: document.querySelector('#voiceHint'),
+  webSearchButton: document.querySelector('#webSearchButton'),
 };
 
 const STORAGE_KEY = 'gemma-local-chat-state';
@@ -133,6 +136,9 @@ function setStreamingMode(isStreaming) {
   elements.stopButton.hidden = !isStreaming;
   elements.micButton.disabled = isStreaming;
   elements.refreshModelsButton.disabled = isStreaming;
+  if (elements.webSearchButton) {
+    elements.webSearchButton.disabled = isStreaming;
+  }
 }
 
 function updateChatHeader() {
@@ -309,7 +315,8 @@ const chatManager = createChatManager({
   defaultVisualTokenBudget: DEFAULT_VISUAL_TOKEN_BUDGET,
   stripThinkingContent,
   shouldUseThinkingMode: () => shouldUseThinkingMode(elements),
-  getSystemPromptContent: () => getSystemPromptContent(elements),
+  isWebSearchEnabled: () => isWebSearchEnabled(elements),
+  getClientContext,
   getActiveSession,
   persistState,
   updateSessionTitle,
@@ -337,6 +344,7 @@ async function init() {
     state.sessions = [createSessionRecord({
       model: elements.modelInput.value.trim(),
       systemPrompt: elements.systemPromptInput.value,
+      webSearchEnabled: isWebSearchEnabled(elements),
     })];
   }
 
@@ -355,6 +363,7 @@ async function init() {
   }
   if (activeSession) {
     elements.systemPromptInput.value = activeSession.systemPrompt || elements.systemPromptInput.value;
+    setWebSearchEnabled(elements, activeSession.webSearchEnabled);
   }
 
   if (!VISUAL_TOKEN_BUDGETS.includes(Number(elements.visualTokenBudgetInput.value))) {

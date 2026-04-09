@@ -12,6 +12,17 @@ export function createHistorySessionController({
   fetchModelInfo,
   renderMessages,
 }) {
+  function syncWebSearchToggle(enabled) {
+    if (!elements.webSearchButton) {
+      return;
+    }
+
+    const nextValue = Boolean(enabled);
+    elements.webSearchButton.setAttribute('aria-pressed', String(nextValue));
+    elements.webSearchButton.dataset.active = nextValue ? 'true' : 'false';
+    elements.webSearchButton.title = nextValue ? 'Disable web search' : 'Enable web search';
+  }
+
   function getActiveSession() {
     return state.sessions.find((session) => session.id === state.activeSessionId) || null;
   }
@@ -92,6 +103,7 @@ export function createHistorySessionController({
     }
 
     elements.systemPromptInput.value = activeSession.systemPrompt || '';
+    syncWebSearchToggle(activeSession.webSearchEnabled);
     updateContextPill();
     updateContextHint();
     updateChatHeader();
@@ -121,6 +133,7 @@ export function createHistorySessionController({
         title: 'New chat',
         messages: [],
         systemPrompt: elements.systemPromptInput.value,
+        webSearchEnabled: elements.webSearchButton?.getAttribute('aria-pressed') === 'true',
       });
 
       state.sessions = [replacement];
@@ -132,6 +145,7 @@ export function createHistorySessionController({
       state.messages = normalizeMessages(nextSession.messages);
       elements.modelInput.value = nextSession.model || elements.modelInput.value;
       elements.systemPromptInput.value = nextSession.systemPrompt || '';
+      syncWebSearchToggle(nextSession.webSearchEnabled);
       updateContextPill();
       updateContextHint();
       updateChatHeader();
@@ -163,6 +177,7 @@ export function createHistorySessionController({
     }
 
     elements.systemPromptInput.value = target.systemPrompt || '';
+    syncWebSearchToggle(target.webSearchEnabled);
 
     updateContextPill();
     updateContextHint();
@@ -183,6 +198,7 @@ export function createHistorySessionController({
       title: 'New chat',
       messages: [],
       systemPrompt: elements.systemPromptInput.value,
+      webSearchEnabled: elements.webSearchButton?.getAttribute('aria-pressed') === 'true',
     });
 
     state.sessions.unshift(newSession);
@@ -212,6 +228,7 @@ export function createHistorySessionController({
       title: 'New chat',
       messages: [],
       systemPrompt: elements.systemPromptInput.value,
+      webSearchEnabled: elements.webSearchButton?.getAttribute('aria-pressed') === 'true',
     });
 
     state.sessions = [restored];

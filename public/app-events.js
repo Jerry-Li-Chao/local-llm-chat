@@ -95,6 +95,13 @@ export function wireAppEvents({
     persistState();
     void measureCurrentConversationContextUsage({ historyMode: 'immediate' });
   });
+  elements.webSearchButton?.addEventListener('click', () => {
+    const nextValue = elements.webSearchButton.getAttribute('aria-pressed') !== 'true';
+    elements.webSearchButton.setAttribute('aria-pressed', String(nextValue));
+    elements.webSearchButton.dataset.active = nextValue ? 'true' : 'false';
+    elements.webSearchButton.title = nextValue ? 'Disable web search' : 'Enable web search';
+    persistState();
+  });
 
   elements.clearChatButton.addEventListener('click', () => {
     clearConversation();

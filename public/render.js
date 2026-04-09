@@ -222,6 +222,12 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     return message.role === 'assistant' && typeof message.thought === 'string' && message.thought.trim().length > 0;
   }
 
+  function hasWebSearch(message) {
+    return Boolean(message?.webSearch?.enabled)
+      || (Array.isArray(message?.webSearch?.sources) && message.webSearch.sources.length > 0)
+      || (Array.isArray(message?.webSearch?.visits) && message.webSearch.visits.length > 0);
+  }
+
   function setBubbleContent(bubble, message) {
     bubble.classList.toggle('markdown', message.role === 'assistant');
 
@@ -306,6 +312,70 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     toggle.setAttribute('aria-expanded', String(expanded));
   }
 
+  function setWebSearchContent(panel, message) {
+    if (!panel) {
+      return;
+    }
+
+    const summary = panel.querySelector('.web-search-summary');
+    const meta = panel.querySelector('.web-search-meta');
+    const visits = panel.querySelector('.web-search-visits');
+    const sources = panel.querySelector('.web-search-sources');
+    const webSearch = message.webSearch && typeof message.webSearch === 'object' ? message.webSearch : null;
+    const available = hasWebSearch(message);
+
+    panel.hidden = !available;
+
+    if (!available || !webSearch) {
+      summary.textContent = '';
+      meta.textContent = '';
+      visits.innerHTML = '';
+      sources.innerHTML = '';
+      return;
+    }
+
+    const sourceCount = Array.isArray(webSearch.sources) ? webSearch.sources.length : 0;
+    const visitList = Array.isArray(webSearch.visits) ? webSearch.visits : [];
+
+    summary.textContent = webSearch.activityLabel
+      || (sourceCount ? `Prepared ${sourceCount} web source${sourceCount === 1 ? '' : 's'}` : 'Web research');
+
+    if (webSearch.status === 'ready' && sourceCount) {
+      meta.textContent = `${sourceCount} source${sourceCount === 1 ? '' : 's'} • ${webSearch.compactedChars || 0} compact chars`;
+    } else if (webSearch.error) {
+      meta.textContent = webSearch.error;
+    } else if (webSearch.query) {
+      meta.textContent = `Query: ${webSearch.query}`;
+    } else {
+      meta.textContent = '';
+    }
+
+    visits.innerHTML = '';
+    visitList.slice(-3).forEach((visit) => {
+      const tag = document.createElement('span');
+      tag.className = 'web-visit-chip';
+      tag.dataset.state = visit.status || 'loading';
+      tag.textContent = visit.domain || visit.title || 'source';
+      visits.appendChild(tag);
+    });
+
+    sources.innerHTML = '';
+    (Array.isArray(webSearch.sources) ? webSearch.sources : []).forEach((source) => {
+      if (!source?.url) {
+        return;
+      }
+
+      const link = document.createElement('a');
+      link.className = 'web-source-chip';
+      link.href = source.url;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+      link.title = source.title || source.url;
+      link.textContent = `[${source.index || '?'}] ${source.domain || source.title || source.url}`;
+      sources.appendChild(link);
+    });
+  }
+
   function syncMessageMeta(meta, message) {
     const label = meta.querySelector('.message-label');
     const modelTag = meta.querySelector('.message-model');
@@ -328,7 +398,7 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     }
 
     const hasDebugInfo = message.role === 'assistant'
-      && ('requestThinkingEnabled' in message || 'requestSystemPrompt' in message);
+      && ('requestThinkingEnabled' in message || 'requestSystemPrompt' in message || 'requestWebSearchEnabled' in message);
 
     debugTag.hidden = !hasDebugInfo;
 
@@ -341,10 +411,10 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
       ? message.requestSystemPrompt.trim()
       : '';
     const promptLabel = promptSnapshot
-      ? `system prompt "${promptSnapshot.length > 48 ? `${promptSnapshot.slice(0, 45)}...` : promptSnapshot}"`
-      : 'system prompt none';
+      ? `custom prompt "${promptSnapshot.length > 48 ? `${promptSnapshot.slice(0, 45)}...` : promptSnapshot}"`
+      : 'custom prompt none';
 
-    debugTag.textContent = `thinking ${message.requestThinkingEnabled ? 'on' : 'off'} • ${promptLabel}`;
+    debugTag.textContent = `thinking ${message.requestThinkingEnabled ? 'on' : 'off'} • web ${message.requestWebSearchEnabled ? 'on' : 'off'} • ${promptLabel}`;
   }
 
   function makeMessageNode(message, index) {
@@ -409,12 +479,31 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
     thoughtPanel.append(thoughtToggle, thoughtBody);
     setThoughtContent(thoughtPanel, message);
 
+    const webSearchPanel = document.createElement('section');
+    webSearchPanel.className = 'web-search-panel';
+
+    const webSearchSummary = document.createElement('strong');
+    webSearchSummary.className = 'web-search-summary';
+
+    const webSearchMeta = document.createElement('span');
+    webSearchMeta.className = 'web-search-meta';
+
+    const webSearchVisits = document.createElement('div');
+    webSearchVisits.className = 'web-search-visits';
+
+    const webSearchSources = document.createElement('div');
+    webSearchSources.className = 'web-search-sources';
+
+    webSearchPanel.append(webSearchSummary, webSearchMeta, webSearchVisits, webSearchSources);
+    setWebSearchContent(webSearchPanel, message);
+
     actions.append(copyMarkdownButton, copyPlainButton);
     meta.append(label, modelTag, debugTag);
     syncMessageMeta(meta, message);
     article.append(meta);
     if (message.role === 'assistant') {
       article.append(thoughtPanel);
+      article.append(webSearchPanel);
     }
     if (imageGallery) {
       article.append(imageGallery);
@@ -449,6 +538,7 @@ export function createRenderer({ elements, state, updateMessage, onOpenImageLigh
       thoughtPanel.querySelector('.thought-toggle')?.setAttribute('data-message-index', String(index));
       setThoughtContent(thoughtPanel, message);
     }
+    setWebSearchContent(node.querySelector('.web-search-panel'), message);
     node.querySelector('.message-image-grid')?.remove();
     const nextGallery = renderMessageImages(message);
     if (nextGallery) {
