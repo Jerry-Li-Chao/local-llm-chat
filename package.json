@@ -6,6 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "benchmark:gemma-speed": "node scripts/benchmark-gemma-speed.js"
+    "benchmark:gemma-speed": "node scripts/benchmark-gemma-speed.js",
+    "test": "node --test tests/*.test.js",
+    "start:books": "node scripts/start-books.js"
   }
 }

@@ -2,6 +2,7 @@ const http = require('node:http');
 
 const {
   HOST,
+  DATA_DIR,
   PORT,
   OLLAMA_BASE_URL,
   PUBLIC_DIR,
@@ -57,8 +58,12 @@ const routeRequest = createRouter({
   staticService,
 });
 
+const { createBookService } = require('./server/book/service.js');
+const bookRoute = createBookService({ dataDir: DATA_DIR, baseUrl: OLLAMA_BASE_URL, readJsonBody, writeJson });
+
 const server = http.createServer(async (req, res) => {
   try {
+    if (await bookRoute(req, res, new URL(req.url, `http://${HOST}:${PORT}`))) return;
     await routeRequest(req, res);
   } catch (error) {
     writeJson(res, 500, {

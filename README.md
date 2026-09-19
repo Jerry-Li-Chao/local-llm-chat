@@ -17,7 +17,9 @@ It is designed for people who want a cleaner local chat interface than the termi
 - Tracks context usage and generation speed
 - Stores chat history locally with optional folder mirroring
 - Lets each chat keep its own system prompt and settings
-- Adds a hidden runtime system prompt on the server with request-time local date/time, inferred location, and harness web-search availability
+- Summarizes PDF books chapter by chapter with adjustable reading targets
+- Preserves detailed summaries, with continuations instead of fixed word limits
+- Provides chapter bookmarks, model comparisons, and sampled memory records
 
 ## Why Gemma 4
 
@@ -40,9 +42,10 @@ The app is organized around three ideas:
 
 ## Requirements
 
-- macOS, Linux, or Windows with Node.js installed
-- Ollama installed locally
+- macOS, Linux, or Windows with Node.js 20 or newer installed
+- Ollama installed locally (0.34 or newer for the book reader)
 - At least one Ollama model already pulled
+- For PDF books: Poppler (`pdfinfo` and `pdftotext`) available on your PATH
 
 Default endpoints:
 
@@ -83,17 +86,58 @@ ollama serve
 
 ## Quick Start
 
+Clone the repository once:
+
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Jerry-Li-Chao/local-llm-chat.git
 cd local-llm-chat
+```
+
+The server uses Node's built-in modules; no npm dependencies need installing.
+
+### Start the book reader
+
+Install PDF extraction tools once. On macOS with Homebrew:
+
+```bash
+brew install poppler
+```
+
+On Ubuntu/Debian: `sudo apt install poppler-utils`. On Windows, install Poppler and add its executable directory to PATH. Check that both `pdfinfo -v` and `pdftotext -v` work in the terminal that will start the server.
+
+Keep the Ollama desktop app running, or run `ollama serve` in a separate terminal. Do not start a second Ollama server if one is already running. Install a model once:
+
+```bash
+ollama pull qwen3.5:4b
+```
+
+From this repository directory, start the local UI:
+
+```bash
+npm run start:books
+```
+
+Open **[Book reader](http://127.0.0.1:3020/books.html)** or **[Chat](http://127.0.0.1:3020/)**. Keep that terminal open while processing. The startup command defaults to port 3020 and honors an existing `PORT` environment variable.
+
+Import a text PDF, confirm its title and chapter boundaries, choose a model and reading target, then select **Start reading**. The Summaries tab includes sticky chapter bookmarks. To compare models, use **New comparison run** so the original summaries remain available.
+
+### Start chat on the original default port
+
+```bash
 npm start
 ```
 
-Then open:
+This serves both chat and books at port **3000** by default: [Chat](http://127.0.0.1:3000/) and [Book reader](http://127.0.0.1:3000/books.html). You only need one UI server.
 
-```text
-http://127.0.0.1:3000
-```
+### Stop, restart, and update
+
+Press **Ctrl+C** in the server terminal to stop it. Start it again with the same command; saved books and chats remain in `data/`. Interrupted book tasks can be resumed from the UI. Closing a browser tab does not stop the server or reading job.
+
+For future updates, stop the UI server, run `git pull --ff-only` from the repository directory, then run `npm run start:books` again. Your local `data/` directory is excluded from Git.
+
+If startup reports **EADDRINUSE**, that port is already occupied; use the existing reader or stop its terminal before restarting. If models are unavailable, check that Ollama is running and use **Refresh models**. If a book request loses its connection, completed chapters remain saved: use **Retry unfinished tasks** after restoring Ollama. Summary responses are streamed to avoid waiting for an entire long answer before receiving data.
+
+Chapter detection is heuristic: a body-text reference such as “chapter 5 …” can be mistaken for a heading. Review the suggested ranges before starting; this known limitation is not yet fixed.
 
 ## First Run Guide
 
@@ -112,7 +156,7 @@ Responses stream into the UI as they are generated.
 
 ### 2. Thinking mode
 
-For Gemma 4, thinking mode prepends `<|think|>` to the server-built system prompt. The UI can show reasoning separately while still keeping persisted multi-turn history clean by storing only the final answer.
+For Gemma 4, thinking mode prepends `<|think|>` to the system prompt. The UI can show reasoning separately while still keeping persisted multi-turn history clean by storing only the final answer.
 
 ### 3. Markdown rendering
 
@@ -125,12 +169,6 @@ You can attach images from the button or drag and drop them into the composer. I
 ### 5. Per-chat system prompts
 
 Each conversation keeps its own system prompt and session settings.
-
-The app also injects a hidden server-side system prompt on every request with:
-
-- the user's local date and time for that request
-- the user's inferred location from browser locale and time zone
-- a note that web search is available through the app harness when enabled
 
 ### 6. Chat history
 
@@ -256,7 +294,7 @@ Notes:
 - the benchmark talks directly to your local Ollama instance, not the browser UI
 
 ### Example benchmark result
-
+rest
 The full local comparison was run with these parameters:
 
 - hardware: MacBook Pro with Apple M1 Pro and 16 GB memory
@@ -313,14 +351,7 @@ That iterative history is still visible in the current feature set: most things 
 
 ## Project Structure
 
-- `server.js`: thin server entrypoint
-- `server/config.js`: runtime paths, limits, and host configuration
-- `server/router.js`: route matching and dispatch
-- `server/handlers/api-handlers.js`: HTTP handlers for chat, status, history, and helpers
-- `server/services/ollama-service.js`: Ollama API calls and response shaping
-- `server/services/history-service.js`: chat-history normalization and disk persistence
-- `server/services/static-service.js`: static asset serving
-- `server/utils/http.js`: JSON body parsing and response helpers
+- `server.js`: local HTTP server, Ollama proxy, persistence, title generation, and exact context helpers
 - `public/index.html`: UI markup
 - `public/styles.css`: styling
 - `public/app.js`: app bootstrap and top-level composition
@@ -338,3 +369,42 @@ That iterative history is still visible in the current feature set: most things 
 ## License
 
 This project is licensed under Apache-2.0. See `LICENSE`.
+
+## Book reader: PDFs larger than the context window
+
+Open **Book reader** from the chat sidebar, or visit `/books.html`. It runs against the same configured Ollama server. Install [Poppler](https://poppler.freedesktop.org/) for `pdfinfo` and `pdftotext` (macOS: `brew install poppler`). No additional npm dependencies are needed.
+
+1. Import a text PDF (up to 40 MB). Page count, word count, extracted-text size, and chapter suggestions are calculated locally before inference.
+2. Review the book title and optional author in **Book details** (suggested from PDF metadata, otherwise the filename). Every prompt includes that identity separately from the section heading and page range. Details can be edited while paused; completed summaries are not rewritten. Review suggested chapter ranges. Contents titles are matched against headings; chapter-heading heuristics and a full-text fallback handle other documents. Page positions refer to the PDF, not printed page numbers. Ranges must cover all pages, including front matter, exactly once.
+3. Choose a local model and summary focus, then start reading. The visible queue expands as oversized tasks are reached. Select a task to inspect the budget decision, source, exact prompt, token count, and result.
+4. Pause/resume or retry unfinished tasks. Completed child summaries are reused. Export available chapter and book summaries as Markdown.
+5. Use **Cancel and clear** to stop and permanently remove the selected book from the library after confirmation. Its extracted text, tasks, activity, summaries, and app-managed migration backup are removed; your original PDF, exports, and other books are kept.
+
+The scheduler is deterministic orchestration, not a model inventing its own task plan. Ollama generates the summaries. Every inference uses a fresh prompt and a context allocation matching the reading target (8,192 by default); no chat history is accumulated. The book task receives chapter summaries only. Large collections of summaries are recursively split and reduced again.
+
+### Context policy
+
+By default, the planner targets **6,000 input tokens**, allows at most **6,656 measured input tokens**, reserves at least **1,024 output tokens**, and leaves **512 tokens** of spare context. It uses the observed bytes-per-token ratio only to propose passages; an Ollama one-token preflight measures each complete prompt (instructions, focus, and overlap included) before full generation. Both calls use the same configured `num_ctx`, `truncate=false`, and `shift=false`. Oversized candidates are rejected or subdivided, never silently shortened. This requires Ollama 0.34 or newer. Every accepted output is checked against the preflight count; missing counts stop processing. There is no summary word limit. Each generation may use the remaining measured context minus 512 safety tokens. If it fills that allowance, its unfinished draft is saved and a continuation is queued with the original source and a bounded ending of the previous output. Continuations are measured again and assembled outside model context. Incomplete drafts are never marked complete. Repeated output and a 24-request-per-resume guard stop runaway continuations while retaining the draft. Because only the ending of previous output is included, the model may repeat or omit material across continuations; inspect important procedures against the source. New runs use the installed model’s Ollama chat template with thinking disabled; the preflight includes template tokens. Existing runs retain their original raw-prompt mode.
+
+The splitter scans text without an extra model pass. Near the proposed cut (the last 28% of its byte allowance), it prefers a heading, then a blank-line paragraph break, then a sentence ending, then whitespace. Unicode-safe character cuts are the final fallback. Up to 600 bytes from the previous passage are explicitly labelled as continuity context and included in the token budget. Non-overlapping source offsets preserve complete coverage; synthesis passes avoid adding overlap. This is structure-aware, not semantic understanding: an argument can span paragraphs, and PDF extraction can lose paragraph breaks. Actual measured token counts, boundary type, overlap, and the planned prompt are visible in the inspector. Summary prompts prioritize important explanations, evidence, and actionable procedures, including prerequisites, exceptions, and cautions. Length follows the material rather than a word-count target. Chapter tasks never combine source text from adjacent chapters, even if both would fit the selected reading target.
+
+The Summaries tab and task summaries render escaped Markdown, including headings, emphasis, lists, code, quotes, and tables. Activity is a categorized timeline with reading/completion/planning/attention filters and links to tasks; older plain-text events are categorized for display. Existing completed summaries are retained on resume, while contiguous unfinished legacy passages are consolidated and replanned with the new budget. See the [Ollama API definitions](https://github.com/ollama/ollama/blob/main/api/types.go) for truncation controls.
+
+PDF extraction and chapter discovery use local tools, not LLM context. Automatic chapter detection is heuristic and needs review. Image-only pages require OCR outside this app; diagrams and images are not interpreted. Chunk summaries are lossy, so exported summaries do not replace the original book.
+
+Jobs, extracted text, prompts, and summaries are stored under `data/books/` (or `$DATA_DIR/books/`). The uploaded PDF is removed after extraction. Closing the browser does not stop a running job. After a server restart, interrupted jobs become resumable. Only one book runs at a time; pause it before starting another. Ordinary chat requests can still run independently.
+
+Run `npm test` for context budgets, recursive reduction, structural boundaries, Unicode coverage, migration/resume, and Markdown rendering checks.
+
+
+### Per-task memory records
+
+The **Memory** tab and task inspector show sampled peak model allocation, GPU allocation, and resident memory (RSS) for all local Ollama processes. Readings start before each context check and summary request, repeat with a nominal one-second interval, and finish after the request. Sampling takes time and can miss brief spikes; these are observed maxima, not operating-system high-water marks. Interrupted attempts retain their records. The records are saved with the job at task boundaries, including pause/error completion, and can be exported as JSON. A sudden server crash can lose samples from the active request. Old tasks display **Not recorded**.
+
+Model allocation and GPU allocation come from Ollama's `/api/ps` for the selected model. Local RSS includes the Ollama process tree, including any other loaded models, and may count shared mappings more than once. The reader's own memory is not included. On Apple silicon, GPU and CPU share physical memory; allocation and RSS overlap and must not be added. The **Lowest free memory** table column shows the lowest observed host free memory during each task (not its current value), but free memory is not equivalent to available headroom because caches, compression, and other applications matter. Remote Ollama connections report model allocation only; local host RSS/free-memory numbers are omitted. These measurements inform experiments but do not automatically increase the context limit. Compare the same model and workload at different configured contexts rather than extrapolating extra tokens directly from free RAM.
+
+### Reading targets and model comparisons
+
+Reading settings provides a 2,000–64,000 token target slider. The target includes instructions and overlap, so source text is shorter. Context is rounded up to a multiple of 1,024 after reserving 1,024 answer tokens and 512 safety tokens. This is an application range, not a claim that every setting fits available RAM. The model’s reported context capacity is checked before inference.
+
+Pause a run to save a new target for unfinished passages. Completed summaries retain their original measurements. Use **New comparison run** to reuse extracted pages, metadata, focus and chapter boundaries with a different model, preserving the original run. Choose `qwen3.5:4b` after it is installed in Ollama. Memory history records context per attempt and output tokens/second for future generations; old records show missing values instead of invented measurements. Output speed excludes prompt processing and model loading.

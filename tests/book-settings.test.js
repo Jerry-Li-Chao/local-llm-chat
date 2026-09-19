@@ -1,0 +1,20 @@
+const test=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const os=require('node:os');
+const path=require('node:path');
+const {randomUUID}=require('node:crypto');
+const {createBookService}=require('../server/book/service');
+test('comparison preserves source and settings without carrying summaries; paused settings preserve completed work',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'book-settings-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));await fs.mkdir(path.join(dir,'books'));
+ const id=randomUUID(),job={id,name:'Example.pdf',bookTitle:'Example',createdAt:new Date().toISOString(),status:'done',model:'gemma4:e4b',chunkTarget:6000,pages:['Text'],chapters:[{title:'One',start:1,end:1}],tasks:[{id:'task',children:[],status:'done',result:'Saved summary'}],events:[],bytesPerToken:3};
+ const file=path.join(dir,'books',id+'.json');await fs.writeFile(file,JSON.stringify(job));
+ let body={};const route=createBookService({dataDir:dir,baseUrl:'http://test',readJsonBody:async()=>body,writeJson:(res,status,data)=>Object.assign(res,{status,data})});
+ const call=async(method,action)=>{const res={};await route({method},res,new URL(`http://test/api/books/${id}/${action}`));return res;};
+ const copy=await call('POST','compare');assert.equal(copy.status,201);assert.equal(copy.data.status,'review');assert.deepEqual(copy.data.tasks,[]);assert.equal(copy.data.bytesPerToken,undefined);
+ assert.deepEqual(JSON.parse(await fs.readFile(file)),job);
+ const saved=JSON.parse(await fs.readFile(path.join(dir,'books',copy.data.id+'.json')));assert.deepEqual(saved.pages,job.pages);assert.deepEqual(saved.chapters,job.chapters);
+ body={chunkTarget:16000};assert.equal((await call('PUT','settings')).status,400);
+ job.status='paused';await fs.writeFile(file,JSON.stringify(job));const updated=await call('PUT','settings');assert.equal(updated.status,200);assert.equal(updated.data.context,18432);assert.equal(updated.data.tasks[0].result,'Saved summary');
+ body={chunkTarget:999999};assert.equal((await call('PUT','settings')).status,400);
+});
